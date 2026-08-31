@@ -5,6 +5,21 @@ app_description = "CRM for Tendersoftware"
 app_email = "rajavally@tendersoftware.in"
 app_license = "mit"
 
+
+# Fixtures
+# ------------------
+# Every Custom Field on CRM Lead (currently just Skype), plus its CRM Fields Layout
+# records -- the separate mechanism specific to the /crm portal app that controls the
+# Quick Entry dialog and Side Panel there (unaffected by Customize Form; autonamed
+# "CRM Lead-Quick Entry" / "CRM Lead-Side Panel"). Scoped by `dt` rather than by name,
+# so a future field added to CRM Lead via Customize Form is picked up automatically on
+# the next export -- no hooks.py edit needed, just re-export (or hand-edit the JSON)
+# and review the diff before committing.
+fixtures = [
+	{"doctype": "Custom Field", "filters": [["dt", "=", "CRM Lead"]]},
+	{"doctype": "CRM Fields Layout", "filters": [["dt", "=", "CRM Lead"]]},
+]
+
 # Apps
 # ------------------
 
