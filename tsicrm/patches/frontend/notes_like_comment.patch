@@ -1,0 +1,252 @@
+diff --git a/frontend/src/components/Activities/Activities.vue b/frontend/src/components/Activities/Activities.vue
+index 4cc0d18..b99599b 100644
+--- a/frontend/src/components/Activities/Activities.vue
++++ b/frontend/src/components/Activities/Activities.vue
+@@ -35,7 +35,7 @@
+       </div>
+       <div
+         v-else-if="title == 'Notes'"
+-        class="grid grid-cols-1 gap-4 px-3 pb-3 sm:px-10 sm:pb-5 lg:grid-cols-2 xl:grid-cols-3"
++        class="grid grid-cols-1 gap-4 px-3 pb-3 sm:px-10 sm:pb-5"
+       >
+         <div
+           v-for="note in activities"
+diff --git a/frontend/src/components/Activities/NoteArea.vue b/frontend/src/components/Activities/NoteArea.vue
+index d5cfb61..713a492 100644
+--- a/frontend/src/components/Activities/NoteArea.vue
++++ b/frontend/src/components/Activities/NoteArea.vue
+@@ -1,6 +1,6 @@
+ <template>
+   <div
+-    class="activity group flex h-48 cursor-pointer flex-col justify-between gap-2 rounded-md bg-surface-gray-1 px-4 py-3 hover:bg-surface-gray-2"
++    class="activity group flex cursor-pointer flex-col gap-2 rounded-md bg-surface-gray-1 px-4 py-3 hover:bg-surface-gray-2"
+   >
+     <div class="flex items-center justify-between">
+       <div class="truncate text-lg-medium text-ink-gray-8">
+@@ -47,21 +47,112 @@
+         class-name="truncate text-sm text-ink-gray-7"
+       />
+     </div>
++
++    <div
++      class="mt-1 flex flex-col gap-3 border-t border-outline-elevation-2 pt-2"
++      @click.stop
++    >
++      <div class="flex items-center gap-4">
++        <div
++          class="flex cursor-pointer items-center gap-1.5 text-ink-gray-6 hover:text-ink-gray-8"
++          @click="toggleLike"
++        >
++          <HeartIcon
++            class="h-4 w-4"
++            :class="isLiked ? 'fill-red-500 text-red-500' : ''"
++          />
++          <span class="text-sm">{{ likeCount }}</span>
++        </div>
++        <div
++          class="flex cursor-pointer items-center gap-1.5 hover:text-ink-gray-8"
++          :class="showComments ? 'text-ink-gray-8' : 'text-ink-gray-6'"
++          @click="toggleComments"
++        >
++          <CommentIcon class="h-4 w-4" />
++          <span class="text-sm">{{ note.comments_count || 0 }}</span>
++        </div>
++      </div>
++
++      <div v-if="showComments" class="flex flex-col gap-3">
++        <div v-if="loadingComments" class="text-sm text-ink-gray-5">
++          {{ __('Loading comments...') }}
++        </div>
++        <template v-else>
++          <div
++            v-if="!comments.length"
++            class="text-sm text-ink-gray-5"
++          >
++            {{ __('No comments yet') }}
++          </div>
++          <div
++            v-for="comment in comments"
++            :key="comment.name"
++            class="flex gap-2"
++          >
++            <UserAvatar :user="comment.owner" size="xs" />
++            <div class="flex min-w-0 flex-1 flex-col gap-0.5">
++              <div class="flex items-center gap-2">
++                <div class="truncate text-sm font-medium text-ink-gray-8">
++                  {{ getUser(comment.owner).full_name }}
++                </div>
++                <TimelineTimestamp
++                  :date="comment.creation"
++                  class-name="truncate text-xs text-ink-gray-5"
++                />
++              </div>
++              <!-- eslint-disable-next-line vue/no-v-html -->
++              <div
++                class="prose-f text-sm text-ink-gray-7"
++                v-html="sanitizeHTML(comment.content)"
++              />
++            </div>
++          </div>
++        </template>
++
++        <div class="flex items-start gap-2">
++          <UserAvatar :user="user" size="xs" />
++          <div class="flex flex-1 flex-col gap-1.5">
++            <textarea
++              v-model="replyContent"
++              rows="1"
++              :placeholder="__('Write a reply...')"
++              class="w-full resize-none rounded border border-outline-gray-2 bg-surface-white px-2 py-1.5 text-sm text-ink-gray-8 placeholder:text-ink-gray-4 focus:border-outline-gray-4 focus:outline-none"
++              @keydown.enter.exact.prevent="submitReply"
++            />
++            <div class="flex justify-end">
++              <Button
++                variant="solid"
++                :label="__('Reply')"
++                :loading="submittingReply"
++                :disabled="!replyContent.trim()"
++                @click="submitReply"
++              />
++            </div>
++          </div>
++        </div>
++      </div>
++    </div>
+   </div>
+ </template>
+ <script setup>
+ import UserAvatar from '@/components/UserAvatar.vue'
+ import TimelineTimestamp from '@/components/Activities/TimelineTimestamp.vue'
+-import { Dropdown, TextEditor, call, toast } from 'frappe-ui'
++import HeartIcon from '@/components/Icons/HeartIcon.vue'
++import CommentIcon from '@/components/Icons/CommentIcon.vue'
++import { Dropdown, Button, TextEditor, call, toast } from 'frappe-ui'
+ import { usersStore } from '@/stores/users'
++import { sessionStore } from '@/stores/session'
++import { sanitizeHTML } from '@/utils'
++import { computed, ref } from 'vue'
+ 
+-defineProps({
++const props = defineProps({
+   note: { type: Object, default: () => ({}) },
+ })
+ 
+ const notes = defineModel({ type: Object })
+ 
+ const { getUser } = usersStore()
++const { user } = sessionStore()
+ 
+ async function deleteNote(name) {
+   await toast.promise(
+@@ -77,4 +168,111 @@ async function deleteNote(name) {
+   )
+   notes.value?.reload()
+ }
++
++// Like / unlike
++// -------------
++// `_liked_by` is the standard JSON-array-of-user-emails field every doctype
++// carries. Toggling it goes through tsicrm's toggle_note_like rather than
++// frappe.desk.like.toggle_like directly: that generic API gates on
++// frappe.has_permission("FCRM Note", "read", doc=note) -- FCRM Note's own
++// DocPerm plus Frappe's default user-permission check on reference_docname
++// -- which is a different, independently-evaluated boundary from the one
++// that actually governs note visibility (permission on the parent Lead/
++// Deal via crm's org-hierarchy hook). Non-Administrator users could already
++// see and comment on a note yet still get a PermissionError liking it.
++// toggle_note_like gates on the parent document instead, the same boundary
++// get_note_comments already uses.
++const isLiked = computed(() => {
++  if (!props.note._liked_by) return false
++  try {
++    return JSON.parse(props.note._liked_by).includes(user)
++  } catch {
++    return false
++  }
++})
++
++const likeCount = computed(() => {
++  if (!props.note._liked_by) return 0
++  try {
++    return JSON.parse(props.note._liked_by).length
++  } catch {
++    return 0
++  }
++})
++
++const togglingLike = ref(false)
++
++async function toggleLike() {
++  if (togglingLike.value) return
++  togglingLike.value = true
++  try {
++    await call('tsicrm.crm_overrides.activities.toggle_note_like', {
++      note: props.note.name,
++      add: isLiked.value ? 'No' : 'Yes',
++    })
++    notes.value?.reload()
++  } catch (e) {
++    toast.error(__('Failed to update like'))
++  } finally {
++    togglingLike.value = false
++  }
++}
++
++// Comments (flat — no nested replies)
++// ------------------------------------
++// Reuses the generic Comment doctype pointed at this note via
++// reference_doctype/reference_name, and the same crm.api.comment.add_comment
++// endpoint the Lead/Deal comment box posts through.
++const showComments = ref(false)
++const loadingComments = ref(false)
++const comments = ref([])
++
++async function toggleComments() {
++  showComments.value = !showComments.value
++  if (showComments.value && !comments.value.length) {
++    await loadComments()
++  }
++}
++
++async function loadComments() {
++  loadingComments.value = true
++  try {
++    // frappe.client.get_list enforces the Comment doctype's own permissions,
++    // which on this site don't grant regular roles read access to Comment
++    // directly (confirmed: PermissionError for non-Administrator users, even
++    // though they can read the note itself just fine). tsicrm's
++    // get_note_comments gates on the note's reference document instead --
++    // the same boundary the rest of this feature already uses -- so it
++    // works for whoever can already see the note.
++    comments.value = await call('tsicrm.crm_overrides.activities.get_note_comments', {
++      note: props.note.name,
++    })
++  } catch (e) {
++    toast.error(__('Failed to load comments'))
++  } finally {
++    loadingComments.value = false
++  }
++}
++
++const replyContent = ref('')
++const submittingReply = ref(false)
++
++async function submitReply() {
++  if (!replyContent.value.trim() || submittingReply.value) return
++  submittingReply.value = true
++  try {
++    await call('crm.api.comment.add_comment', {
++      reference_doctype: 'FCRM Note',
++      reference_name: props.note.name,
++      content: replyContent.value,
++    })
++    replyContent.value = ''
++    await loadComments()
++    notes.value?.reload()
++  } catch (e) {
++    toast.error(__('Failed to add comment'))
++  } finally {
++    submittingReply.value = false
++  }
++}
+ </script>

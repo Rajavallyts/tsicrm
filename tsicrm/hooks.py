@@ -18,6 +18,11 @@ app_license = "mit"
 fixtures = [
 	{"doctype": "Custom Field", "filters": [["dt", "=", "CRM Lead"]]},
 	{"doctype": "CRM Fields Layout", "filters": [["dt", "=", "CRM Lead"]]},
+	# Role Permission Manager changes on CRM Territory (restricting Create/Write/Delete
+	# to Administrator/System Manager) land as Custom DocPerm rows, not on the
+	# doctype's own (foreign, unowned) permissions table. Named randomly; scoped by
+	# `parent`, not `dt`/`doc_type` like the two entries above.
+	{"doctype": "Custom DocPerm", "filters": [["parent", "=", "CRM Territory"]]},
 ]
 
 # Apps
@@ -195,9 +200,14 @@ fixtures = [
 # Overriding Methods
 # ------------------------------
 #
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "tsicrm.event.get_events"
-# }
+# crm.api.activities.get_activities is the whitelisted call the /crm portal's
+# activity timeline uses (frontend/src/components/Activities/Activities.vue).
+# This wraps it -- without editing apps/crm -- to attach `_liked_by` and a
+# `comments_count` to each FCRM Note, for the Notes tab's Like/Comment
+# feature. See tsicrm/crm_overrides/activities.py.
+override_whitelisted_methods = {
+	"crm.api.activities.get_activities": "tsicrm.crm_overrides.activities.get_activities",
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
