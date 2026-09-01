@@ -1,0 +1,52 @@
+diff --git a/frontend/src/pages/Organization.vue b/frontend/src/pages/Organization.vue
+index 31ee55a..55ff70a 100644
+--- a/frontend/src/pages/Organization.vue
++++ b/frontend/src/pages/Organization.vue
+@@ -155,8 +155,14 @@
+           :columns="columns"
+           :options="{ selectable: false, showTooltip: false }"
+         />
++        <Activities
++          v-if="tab.label === 'Notes'"
++          doctype="CRM Organization"
++          :docname="organization.doc.name"
++          :tabs="notesTabs"
++        />
+         <EmptyState
+-          v-if="!rows.length"
++          v-if="tab.label !== 'Notes' && !rows.length"
+           :icon="tab.icon"
+           :name="__(tab.label)"
+         />
+@@ -185,10 +191,12 @@ import Icon from '@/components/Icon.vue'
+ import LayoutHeader from '@/components/LayoutHeader.vue'
+ import DealsListView from '@/components/ListViews/DealsListView.vue'
+ import ContactsListView from '@/components/ListViews/ContactsListView.vue'
++import Activities from '@/components/Activities/Activities.vue'
+ import WebsiteIcon from '@/components/Icons/WebsiteIcon.vue'
+ import CameraIcon from '@/components/Icons/CameraIcon.vue'
+ import DealsIcon from '@/components/Icons/DealsIcon.vue'
+ import ContactsIcon from '@/components/Icons/ContactsIcon.vue'
++import NoteIcon from '@/components/Icons/NoteIcon.vue'
+ import DeleteLinkedDocModal from '@/components/DeleteLinkedDocModal.vue'
+ import CustomActions from '@/components/CustomActions.vue'
+ import { useDocument } from '@/data/document'
+@@ -381,8 +389,18 @@ const tabs = [
+     icon: ContactsIcon,
+     count: computed(() => contacts.data?.length),
+   },
++  {
++    label: 'Notes',
++    icon: NoteIcon,
++  },
+ ]
+ 
++// Activities.vue reads its own props.tabs[tabIndex].name to decide what to
++// fetch/render -- unrelated to the outer Deals/Contacts/Notes tab strip above
++// (that tabIndex belongs to the Tabs component wrapping this whole page).
++// A single-entry list keeps Activities.vue permanently on its "Notes" view.
++const notesTabs = [{ name: 'Notes', label: __('Notes'), icon: NoteIcon }]
++
+ const deals = createListResource({
+   type: 'list',
+   doctype: 'CRM Deal',
